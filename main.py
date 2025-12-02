@@ -2,14 +2,16 @@ import streamlit as st
 import PyPDF2
 import io
 import os
-from  openai import OpenAI
+from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
 
 st.set_page_config(page_title="Resume R US", page_icon="📄", layout="centered")
 
-# ---------- VISUAL STYLING ONLY (NO LOGIC CHANGED) ----------
+# =========================================
+#  UI STYLING (GRADIENT + HERO + CARDS)
+# =========================================
 st.markdown(
     """
     <style>
@@ -17,8 +19,6 @@ st.markdown(
     .stApp {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        
-        
     }
 
     /* Centered hero container */
@@ -70,9 +70,8 @@ st.markdown(
         color: #e5e7eb;
         font-size: 0.95rem;
         text-align: center;
-    
-
     }
+
 
     /* Analysis output card */
     .analysis-card {
@@ -80,7 +79,7 @@ st.markdown(
         margin: 1.5rem auto 0 auto;
         padding: 1.2rem 1.4rem;
         border-radius: 1rem;
-        background: #000000;
+        background: #fefce8;
         border: 1px solid #facc15;
         color: #000000 !important;
     }
@@ -96,7 +95,11 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ---------- HERO (CENTERED) ----------
+OPEN_AI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# =========================================
+#  HERO + HOW IT WORKS (ALWAYS VISIBLE)
+# =========================================
 st.markdown(
     """
     <div class="hero-container">
@@ -113,20 +116,94 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------- INSTRUCTIONS ----------
 st.markdown(
     """
     <div class="how-it-works">
         <strong>How it works:</strong><br><br>
-        1. Upload your resume<br>
-        2. (Optional) Tell us your target job<br>
-        3. Click analyze
+        1. Create an account or log in from the sidebar<br>
+        2. Upload your resume<br>
+        3. (Optional) Tell us your target job<br>
+        4. Click analyze
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# ---------- INPUT SECTION ----------
+# =========================================
+#  ACCOUNT / AUTH SETUP (SIDEBAR)
+# =========================================
+
+# Simple in-memory "user database"
+if "users" not in st.session_state:
+    st.session_state.users = {
+        "user": "password123"  # default demo account
+    }
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+with st.sidebar:
+    st.header("Account")
+
+    if st.session_state.logged_in:
+        st.markdown(f"**Logged in as:** `{st.session_state.current_user}`")
+        logout_clicked = st.button("Log out")
+
+        if logout_clicked:
+            st.session_state.logged_in = False
+            st.session_state.current_user = None
+            st.success("You have been logged out.")
+            st.rerun()
+    else:
+        auth_mode = st.radio("Account options", ["Login", "Create Account"])
+
+        if auth_mode == "Login":
+            st.subheader("Login")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_clicked = st.button("Login")
+
+            if login_clicked:
+                users = st.session_state.users
+                if username in users and users[username] == password:
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = username
+                    st.success("Login successful!")
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password.")
+
+        elif auth_mode == "Create Account":
+            st.subheader("Create Account")
+            new_username = st.text_input("New username")
+            new_password = st.text_input("New password", type="password")
+            confirm_password = st.text_input("Confirm password", type="password")
+            create_clicked = st.button("Create Account")
+
+            if create_clicked:
+                if not new_username or not new_password:
+                    st.error("Username and password cannot be empty.")
+                elif new_username in st.session_state.users:
+                    st.error("Username already exists. Please choose another one.")
+                elif new_password != confirm_password:
+                    st.error("Passwords do not match.")
+                else:
+                    st.session_state.users[new_username] = new_password
+                    st.success("Account created! You can now log in.")
+
+# Block main app if not logged in
+if not st.session_state.logged_in:
+    st.info("Please log in or create an account in the sidebar to upload and analyze your resume.")
+    st.stop()
+
+# =========================================
+#  MAIN APP (ONLY AFTER LOGIN)
+# =========================================
+
+# Upload + inputs inside styled card
 st.markdown('<div class="upload-card">', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Upload Resume", type=["pdf", "txt"])
@@ -135,7 +212,7 @@ analyze = st.button("✨ Analyze My Resume", use_container_width=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------- FILE EXTRACTION (UNCHANGED) ----------
+# ---------- FILE EXTRACTION ----------
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PyPDF2.PdfReader(pdf_file)
     text = ""
@@ -150,7 +227,7 @@ def extract_text_from_file(uploaded_file):
     return uploaded_file.read().decode("utf-8")
 
 
-# ---------- AI ANALYSIS (UNCHANGED LOGIC) ----------
+# ---------- AI ANALYSIS ----------
 if analyze and uploaded_file:
     try:
         file_content = extract_text_from_file(uploaded_file)
@@ -174,15 +251,17 @@ Resume content:
 Please provide your analysis in a clear, structured format with specific recommendations.
 """
 
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = OpenAI(api_key=OPEN_AI_API_KEY)
 
         with st.spinner("Analyzing your resume..."):
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", 
-                     "content": "You are an expert resume reviewer with years of HR and recruitment experience."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert resume reviewer with years of HR and recruitment experience.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
                 max_tokens=1000,
@@ -201,3 +280,4 @@ st.markdown(
     '<div class="footer-note">Your resume is processed securely and never stored.</div>',
     unsafe_allow_html=True,
 )
+
