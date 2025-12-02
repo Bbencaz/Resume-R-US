@@ -1,0 +1,10 @@
+[project]
+name = "resume-r-us"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pypdf2>=3.0.1",
+    "streamlit>=1.51.0",
+]
